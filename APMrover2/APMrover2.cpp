@@ -237,7 +237,8 @@ void Rover::update_logging1(void)
 void Rover::update_logging2(void)
 {
     if (should_log(MASK_LOG_STEERING)) {
-        if (control_mode == STEERING || control_mode == AUTO || control_mode == RTL || control_mode == GUIDED) {
+        if (control_mode == STEERING || control_mode == AUTO || 
+                control_mode == RTL || control_mode == GUIDED || control_mode == DUCKLING) {
             Log_Write_Steering();
         }
     }
@@ -388,6 +389,15 @@ void Rover::update_current_mode(void)
         }
         break;
 
+    case DUCKLING: 
+        /* 
+         * TODO
+         * Read ball tracking information from mavlink
+         * Read information from surrounding cars over wifi
+         * update state of surrounding cars
+         * ? decide how to move
+         */
+        break;
     case STEERING: {
         /*
           in steering mode we control lateral acceleration
@@ -439,12 +449,16 @@ void Rover::update_current_mode(void)
         channel_steer->servo_out = 0;
         set_reverse(false);
         break;
+    
+    
 
     case INITIALISING:
         break;
     }
 }
 
+
+// Used for waypoint navigation
 void Rover::update_navigation()
 {
     switch (control_mode) {
@@ -452,6 +466,7 @@ void Rover::update_navigation()
     case HOLD:
     case LEARNING:
     case STEERING:
+    case DUCKLING:
     case INITIALISING:
         break;
 

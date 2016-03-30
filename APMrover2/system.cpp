@@ -292,6 +292,7 @@ void Rover::set_mode(enum mode mode)
 		case MANUAL:
 		case HOLD:
 		case LEARNING:
+		case DUCKLING:
 		case STEERING:
 			break;
 
@@ -333,6 +334,7 @@ bool Rover::mavlink_set_mode(uint8_t mode)
     case MANUAL:
     case HOLD:
     case LEARNING:
+    case DUCKLING:
     case STEERING:
     case GUIDED:
     case AUTO:
@@ -460,6 +462,9 @@ void Rover::print_mode(AP_HAL::BetterStream *port, uint8_t mode)
         break;
     case LEARNING:
         port->print_P(PSTR("Learning"));
+        break;
+    case DUCKLING:
+        port->print_P(PSTR("Duckling"));
         break;
     case STEERING:
         port->print_P(PSTR("Steering"));

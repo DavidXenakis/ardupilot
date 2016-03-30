@@ -169,6 +169,7 @@ void Rover::calc_lateral_acceleration()
 
     case RTL:
     case GUIDED:
+    case DUCKLING:
     case STEERING:
         nav_controller->update_waypoint(current_loc, next_WP);
         break;
