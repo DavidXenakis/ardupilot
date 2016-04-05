@@ -75,6 +75,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] PROGMEM = {
 #if FRSKY_TELEM_ENABLED == ENABLED
     { SCHED_TASK(frsky_telemetry_send),  10,    100 }
 #endif
+
 };
 
 /*
@@ -389,7 +390,7 @@ void Rover::update_current_mode(void)
         }
         break;
 
-    case DUCKLING: 
+    case DUCKLING: {
         /* 
          * TODO
          * Read ball tracking information from mavlink
@@ -397,7 +398,19 @@ void Rover::update_current_mode(void)
          * update state of surrounding cars
          * ? decide how to move
          */
+        float max_g_force = ground_speed * ground_speed / steerController.get_turn_radius();
+        max_g_force = constrain_float(max_g_force, 0.1f, g.turn_max_g * GRAVITY_MSS);
+
+        lateral_acceleration = duck_leader_curr_loc * 2.5;
+        //channel_steer->servo_out = duck_leader_curr_loc * 3000;
+        calc_nav_steer();
+
+        
+        channel_throttle->servo_out = channel_throttle->control_in;
+        set_reverse(channel_throttle->servo_out < 0);
+
         break;
+    }
     case STEERING: {
         /*
           in steering mode we control lateral acceleration

@@ -163,6 +163,8 @@ void Rover::init_ardupilot()
         }
 	}
 
+	rover.duck_leader_curr_loc = 0;
+
 	// initialise sonar
     init_sonar();
 
@@ -218,6 +220,7 @@ void Rover::init_ardupilot()
 	// set the correct flight mode
 	// ---------------------------
 	reset_control_switch();
+
 }
 
 //********************************************************************************

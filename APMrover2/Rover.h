@@ -367,6 +367,10 @@ private:
     static const AP_Param::Info var_info[];
     static const LogStructure log_structure[];
 
+    // Last known location and current read location of duckling leader
+    float duck_leader_last_loc;
+    float duck_leader_curr_loc;
+
 private:
     // private member functions
     void ahrs_update();
@@ -381,6 +385,7 @@ private:
     void one_second_loop(void);
     void update_GPS_50Hz(void);
     void update_GPS_10Hz(void);
+    void read_duckling_data(void);
     void update_current_mode(void);
     void update_navigation();
     void send_heartbeat(mavlink_channel_t chan);

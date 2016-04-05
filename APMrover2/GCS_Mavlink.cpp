@@ -124,8 +124,7 @@ void Rover::send_extended_status1(mavlink_channel_t chan)
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_ATTITUDE_STABILIZATION; // attitude stabilisation
         break;
 
-    case AUTO:
-    case RTL:
+    case AUTO: case RTL:
     case DUCKLING:
     case GUIDED:
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_ANGULAR_RATE_CONTROL; // 3D angular rate control
@@ -842,122 +841,132 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 {
     switch (msg->msgid) {
 
+    case MAVLINK_MSG_ID_DUCK_LEADER_LOC:
+    {
+        mavlink_duck_leader_loc_t packet;
+        mavlink_msg_duck_leader_loc_decode(msg, &packet);
+
+        //rover.duck_leader_curr_loc = 1.0f;
+        rover.duck_leader_curr_loc = packet.duck_leader_LR;
+        break;    
+    }
+
     case MAVLINK_MSG_ID_REQUEST_DATA_STREAM:
-        {
-            handle_request_data_stream(msg, true);
-            break;
-        }
+    {
+        handle_request_data_stream(msg, true);
+        break;
+    }
 
     case MAVLINK_MSG_ID_COMMAND_LONG:
-        {
-            // decode
-            mavlink_command_long_t packet;
-            mavlink_msg_command_long_decode(msg, &packet);
+    {
+        // decode
+        mavlink_command_long_t packet;
+        mavlink_msg_command_long_decode(msg, &packet);
 
-            uint8_t result = MAV_RESULT_UNSUPPORTED;
+        uint8_t result = MAV_RESULT_UNSUPPORTED;
 
-            // do command
-            send_text_P(SEVERITY_LOW,PSTR("command received: "));
+        // do command
+        send_text_P(SEVERITY_LOW,PSTR("command received: "));
 
-            switch(packet.command) {
+        switch(packet.command) {
 
-            case MAV_CMD_START_RX_PAIR:
-                // initiate bind procedure
-                if (!hal.rcin->rc_bind(packet.param1)) {
-                    result = MAV_RESULT_FAILED;
-                } else {
-                    result = MAV_RESULT_ACCEPTED;
-                }
-                break;
-
-            case MAV_CMD_NAV_RETURN_TO_LAUNCH:
-                rover.set_mode(RTL);
+        case MAV_CMD_START_RX_PAIR:
+            // initiate bind procedure
+            if (!hal.rcin->rc_bind(packet.param1)) {
+                result = MAV_RESULT_FAILED;
+            } else {
                 result = MAV_RESULT_ACCEPTED;
-                break;
+            }
+            break;
+
+        case MAV_CMD_NAV_RETURN_TO_LAUNCH:
+            rover.set_mode(RTL);
+            result = MAV_RESULT_ACCEPTED;
+            break;
 
 #if MOUNT == ENABLED
-            // Sets the region of interest (ROI) for the camera
-            case MAV_CMD_DO_SET_ROI:
-                Location roi_loc;
-                roi_loc.lat = (int32_t)(packet.param5 * 1.0e7f);
-                roi_loc.lng = (int32_t)(packet.param6 * 1.0e7f);
-                roi_loc.alt = (int32_t)(packet.param7 * 100.0f);
-                if (roi_loc.lat == 0 && roi_loc.lng == 0 && roi_loc.alt == 0) {
-                    // switch off the camera tracking if enabled
-                    if (rover.camera_mount.get_mode() == MAV_MOUNT_MODE_GPS_POINT) {
-                        rover.camera_mount.set_mode_to_default();
-                    }
-                } else {
-                    // send the command to the camera mount
-                    rover.camera_mount.set_roi_target(roi_loc);
+        // Sets the region of interest (ROI) for the camera
+        case MAV_CMD_DO_SET_ROI:
+            Location roi_loc;
+            roi_loc.lat = (int32_t)(packet.param5 * 1.0e7f);
+            roi_loc.lng = (int32_t)(packet.param6 * 1.0e7f);
+            roi_loc.alt = (int32_t)(packet.param7 * 100.0f);
+            if (roi_loc.lat == 0 && roi_loc.lng == 0 && roi_loc.alt == 0) {
+                // switch off the camera tracking if enabled
+                if (rover.camera_mount.get_mode() == MAV_MOUNT_MODE_GPS_POINT) {
+                    rover.camera_mount.set_mode_to_default();
                 }
-                result = MAV_RESULT_ACCEPTED;
-                break;
+            } else {
+                // send the command to the camera mount
+                rover.camera_mount.set_roi_target(roi_loc);
+            }
+            result = MAV_RESULT_ACCEPTED;
+            break;
 #endif
 
-            case MAV_CMD_MISSION_START:
-                rover.set_mode(AUTO);
+        case MAV_CMD_MISSION_START:
+            rover.set_mode(AUTO);
+            result = MAV_RESULT_ACCEPTED;
+            break;
+
+        case MAV_CMD_PREFLIGHT_CALIBRATION:
+            if (is_equal(packet.param1,1.0f)) {
+                rover.ins.init_gyro();
+                if (rover.ins.gyro_calibrated_ok_all()) {
+                    rover.ahrs.reset_gyro_drift();
+                    result = MAV_RESULT_ACCEPTED;
+                } else {
+                    result = MAV_RESULT_FAILED;
+                }
+            } else if (is_equal(packet.param3,1.0f)) {
+                rover.init_barometer();
                 result = MAV_RESULT_ACCEPTED;
-                break;
-
-            case MAV_CMD_PREFLIGHT_CALIBRATION:
-                if (is_equal(packet.param1,1.0f)) {
+            } else if (is_equal(packet.param4,1.0f)) {
+                rover.trim_radio();
+                result = MAV_RESULT_ACCEPTED;
+            } else if (is_equal(packet.param5,1.0f)) {
+                float trim_roll, trim_pitch;
+                AP_InertialSensor_UserInteract_MAVLink interact(this);
+                if (rover.g.skip_gyro_cal) {
+                    // start with gyro calibration, otherwise if the user
+                    // has SKIP_GYRO_CAL=1 they don't get to do it
                     rover.ins.init_gyro();
-                    if (rover.ins.gyro_calibrated_ok_all()) {
-                        rover.ahrs.reset_gyro_drift();
-                        result = MAV_RESULT_ACCEPTED;
-                    } else {
-                        result = MAV_RESULT_FAILED;
-                    }
-                } else if (is_equal(packet.param3,1.0f)) {
-                    rover.init_barometer();
-                    result = MAV_RESULT_ACCEPTED;
-                } else if (is_equal(packet.param4,1.0f)) {
-                    rover.trim_radio();
-                    result = MAV_RESULT_ACCEPTED;
-                } else if (is_equal(packet.param5,1.0f)) {
-                    float trim_roll, trim_pitch;
-                    AP_InertialSensor_UserInteract_MAVLink interact(this);
-                    if (rover.g.skip_gyro_cal) {
-                        // start with gyro calibration, otherwise if the user
-                        // has SKIP_GYRO_CAL=1 they don't get to do it
-                        rover.ins.init_gyro();
-                    }
-                    if(rover.ins.calibrate_accel(&interact, trim_roll, trim_pitch)) {
-                        // reset ahrs's trim to suggested values from calibration routine
-                        rover.ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
-                        result = MAV_RESULT_ACCEPTED;
-                    } else {
-                        result = MAV_RESULT_FAILED;
-                    }
-                } else if (is_equal(packet.param5,2.0f)) {
-                    // accel trim
-                    float trim_roll, trim_pitch;
-                    if(rover.ins.calibrate_trim(trim_roll, trim_pitch)) {
-                        // reset ahrs's trim to suggested values from calibration routine
-                        rover.ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
-                        result = MAV_RESULT_ACCEPTED;
-                    } else {
-                        result = MAV_RESULT_FAILED;
-                    }
                 }
-                else {
-                    send_text_P(SEVERITY_LOW, PSTR("Unsupported preflight calibration"));
+                if(rover.ins.calibrate_accel(&interact, trim_roll, trim_pitch)) {
+                    // reset ahrs's trim to suggested values from calibration routine
+                    rover.ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
+                    result = MAV_RESULT_ACCEPTED;
+                } else {
+                    result = MAV_RESULT_FAILED;
                 }
-                break;
+            } else if (is_equal(packet.param5,2.0f)) {
+                // accel trim
+                float trim_roll, trim_pitch;
+                if(rover.ins.calibrate_trim(trim_roll, trim_pitch)) {
+                    // reset ahrs's trim to suggested values from calibration routine
+                    rover.ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
+                    result = MAV_RESULT_ACCEPTED;
+                } else {
+                    result = MAV_RESULT_FAILED;
+                }
+            }
+            else {
+                send_text_P(SEVERITY_LOW, PSTR("Unsupported preflight calibration"));
+            }
+            break;
 
-            case MAV_CMD_PREFLIGHT_SET_SENSOR_OFFSETS:
-                if (is_equal(packet.param1,2.0f)) {
-                    // save first compass's offsets
-                    rover.compass.set_and_save_offsets(0, packet.param2, packet.param3, packet.param4);
-                    result = MAV_RESULT_ACCEPTED;
-                }
-                if (is_equal(packet.param1,5.0f)) {
-                    // save secondary compass's offsets
-                    rover.compass.set_and_save_offsets(1, packet.param2, packet.param3, packet.param4);
-                    result = MAV_RESULT_ACCEPTED;
-                }
-                break;
+        case MAV_CMD_PREFLIGHT_SET_SENSOR_OFFSETS:
+            if (is_equal(packet.param1,2.0f)) {
+                // save first compass's offsets
+                rover.compass.set_and_save_offsets(0, packet.param2, packet.param3, packet.param4);
+                result = MAV_RESULT_ACCEPTED;
+            }
+            if (is_equal(packet.param1,5.0f)) {
+                // save secondary compass's offsets
+                rover.compass.set_and_save_offsets(1, packet.param2, packet.param3, packet.param4);
+                result = MAV_RESULT_ACCEPTED;
+            }
+            break;
 
         case MAV_CMD_DO_SET_MODE:
             switch ((uint16_t)packet.param1) {
@@ -1025,30 +1034,30 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
         }
 
         default:
-                break;
-            }
-
-            mavlink_msg_command_ack_send_buf(
-                msg,
-                chan,
-                packet.command,
-                result);
-
             break;
         }
+
+        mavlink_msg_command_ack_send_buf(
+            msg,
+            chan,
+            packet.command,
+            result);
+
+        break;
+    }
 
 
     case MAVLINK_MSG_ID_SET_MODE:
-		{
-            handle_set_mode(msg, FUNCTOR_BIND(&rover, &Rover::mavlink_set_mode, bool, uint8_t));
-            break;
-        }
+    {
+        handle_set_mode(msg, FUNCTOR_BIND(&rover, &Rover::mavlink_set_mode, bool, uint8_t));
+        break;
+    }
 
     case MAVLINK_MSG_ID_MISSION_REQUEST_LIST:
-        {
-            handle_mission_request_list(rover.mission, msg);
-            break;
-        }
+    {
+        handle_mission_request_list(rover.mission, msg);
+        break;
+    }
 
 
 	// XXX read a WP from EEPROM and send it to the GCS
@@ -1060,22 +1069,22 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 
 
     case MAVLINK_MSG_ID_MISSION_ACK:
-        {
-            // not used
-            break;
-        }
+    {
+        // not used
+        break;
+    }
 
     case MAVLINK_MSG_ID_PARAM_REQUEST_LIST:
-        {
-            // mark the firmware version in the tlog
-            send_text_P(SEVERITY_LOW, PSTR(FIRMWARE_STRING));
+    {
+        // mark the firmware version in the tlog
+        send_text_P(SEVERITY_LOW, PSTR(FIRMWARE_STRING));
 
 #if defined(PX4_GIT_VERSION) && defined(NUTTX_GIT_VERSION)
-            send_text_P(SEVERITY_LOW, PSTR("PX4: " PX4_GIT_VERSION " NuttX: " NUTTX_GIT_VERSION));
+        send_text_P(SEVERITY_LOW, PSTR("PX4: " PX4_GIT_VERSION " NuttX: " NUTTX_GIT_VERSION));
 #endif
-            handle_param_request_list(msg);
-            break;
-        }
+        handle_param_request_list(msg);
+        break;
+    }
 
     case MAVLINK_MSG_ID_PARAM_REQUEST_READ:
     {
@@ -1084,22 +1093,22 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     }
 
     case MAVLINK_MSG_ID_MISSION_CLEAR_ALL:
-        {
-            handle_mission_clear_all(rover.mission, msg);
-            break;
-        }
+    {
+        handle_mission_clear_all(rover.mission, msg);
+        break;
+    }
 
     case MAVLINK_MSG_ID_MISSION_SET_CURRENT:
-        {
-            handle_mission_set_current(rover.mission, msg);
-            break;
-        }
+    {
+        handle_mission_set_current(rover.mission, msg);
+        break;
+    }
 
     case MAVLINK_MSG_ID_MISSION_COUNT:
-        {
-            handle_mission_count(rover.mission, msg);
-            break;
-        }
+    {
+        handle_mission_count(rover.mission, msg);
+        break;
+    }
 
     case MAVLINK_MSG_ID_MISSION_WRITE_PARTIAL_LIST:
     {
@@ -1109,19 +1118,19 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 
 	// XXX receive a WP from GCS and store in EEPROM
     case MAVLINK_MSG_ID_MISSION_ITEM:
-        {
-            if (handle_mission_item(msg, rover.mission)) {
-                rover.Log_Write_EntireMission();
-            }
-            break;
+    {
+        if (handle_mission_item(msg, rover.mission)) {
+            rover.Log_Write_EntireMission();
         }
+        break;
+    }
 
 
     case MAVLINK_MSG_ID_PARAM_SET:
-        {
-            handle_param_set(msg, &rover.DataFlash);
-            break;
-        }
+    {
+        handle_param_set(msg, &rover.DataFlash);
+        break;
+    }
 
     case MAVLINK_MSG_ID_RC_CHANNELS_OVERRIDE:
     {
@@ -1150,51 +1159,51 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
     }
 
     case MAVLINK_MSG_ID_HEARTBEAT:
-        {
-            // We keep track of the last time we received a heartbeat from our GCS for failsafe purposes
-			if(msg->sysid != rover.g.sysid_my_gcs) break;
-            rover.last_heartbeat_ms = rover.failsafe.rc_override_timer = hal.scheduler->millis();
-            rover.failsafe_trigger(FAILSAFE_EVENT_GCS, false);
-            break;
-        }
+    {
+        // We keep track of the last time we received a heartbeat from our GCS for failsafe purposes
+        if(msg->sysid != rover.g.sysid_my_gcs) break;
+        rover.last_heartbeat_ms = rover.failsafe.rc_override_timer = hal.scheduler->millis();
+        rover.failsafe_trigger(FAILSAFE_EVENT_GCS, false);
+        break;
+    }
 
 #if HIL_MODE != HIL_MODE_DISABLED
 	case MAVLINK_MSG_ID_HIL_STATE:
-		{
-			mavlink_hil_state_t packet;
-			mavlink_msg_hil_state_decode(msg, &packet);
-			
-            // set gps hil sensor
-            Location loc;
-            loc.lat = packet.lat;
-            loc.lng = packet.lon;
-            loc.alt = packet.alt/10;
-            Vector3f vel(packet.vx, packet.vy, packet.vz);
-            vel *= 0.01f;
-            
-            gps.setHIL(0, AP_GPS::GPS_OK_FIX_3D,
-                       packet.time_usec/1000,
-                       loc, vel, 10, 0, true);
-			
-			// rad/sec
-            Vector3f gyros;
-            gyros.x = packet.rollspeed;
-            gyros.y = packet.pitchspeed;
-            gyros.z = packet.yawspeed;
+    {
+        mavlink_hil_state_t packet;
+        mavlink_msg_hil_state_decode(msg, &packet);
+        
+        // set gps hil sensor
+        Location loc;
+        loc.lat = packet.lat;
+        loc.lng = packet.lon;
+        loc.alt = packet.alt/10;
+        Vector3f vel(packet.vx, packet.vy, packet.vz);
+        vel *= 0.01f;
+        
+        gps.setHIL(0, AP_GPS::GPS_OK_FIX_3D,
+                   packet.time_usec/1000,
+                   loc, vel, 10, 0, true);
+        
+        // rad/sec
+        Vector3f gyros;
+        gyros.x = packet.rollspeed;
+        gyros.y = packet.pitchspeed;
+        gyros.z = packet.yawspeed;
 
-            // m/s/s
-            Vector3f accels;
-            accels.x = packet.xacc * (GRAVITY_MSS/1000.0f);
-            accels.y = packet.yacc * (GRAVITY_MSS/1000.0f);
-            accels.z = packet.zacc * (GRAVITY_MSS/1000.0f);
-            
-            ins.set_gyro(0, gyros);
+        // m/s/s
+        Vector3f accels;
+        accels.x = packet.xacc * (GRAVITY_MSS/1000.0f);
+        accels.y = packet.yacc * (GRAVITY_MSS/1000.0f);
+        accels.z = packet.zacc * (GRAVITY_MSS/1000.0f);
+        
+        ins.set_gyro(0, gyros);
 
-            ins.set_accel(0, accels);
-            compass.setHIL(0, packet.roll, packet.pitch, packet.yaw);
-            compass.setHIL(1, packet.roll, packet.pitch, packet.yaw);
-            break;
-		}
+        ins.set_accel(0, accels);
+        compass.setHIL(0, packet.roll, packet.pitch, packet.yaw);
+        compass.setHIL(1, packet.roll, packet.pitch, packet.yaw);
+        break;
+    }
 #endif // HIL_MODE
 
 #if CAMERA == ENABLED
@@ -1213,24 +1222,24 @@ void GCS_MAVLINK::handleMessage(mavlink_message_t* msg)
 
 #if MOUNT == ENABLED
     case MAVLINK_MSG_ID_MOUNT_CONFIGURE:
-		{
-			rover.camera_mount.configure_msg(msg);
-			break;
-		}
+    {
+        rover.camera_mount.configure_msg(msg);
+        break;
+    }
 
     case MAVLINK_MSG_ID_MOUNT_CONTROL:
-		{
-			rover.camera_mount.control_msg(msg);
-			break;
-		}
+    {
+        rover.camera_mount.control_msg(msg);
+        break;
+    }
 #endif // MOUNT == ENABLED
 
     case MAVLINK_MSG_ID_RADIO:
     case MAVLINK_MSG_ID_RADIO_STATUS:
-        {
-            handle_radio_status(msg, rover.DataFlash, rover.should_log(MASK_LOG_PM));
-            break;
-        }
+    {
+        handle_radio_status(msg, rover.DataFlash, rover.should_log(MASK_LOG_PM));
+        break;
+    }
 
     case MAVLINK_MSG_ID_LOG_REQUEST_DATA:
     case MAVLINK_MSG_ID_LOG_ERASE:
