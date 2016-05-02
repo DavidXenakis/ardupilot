@@ -398,16 +398,26 @@ void Rover::update_current_mode(void)
          * update state of surrounding cars
          * ? decide how to move
          */
-        float max_g_force = ground_speed * ground_speed / steerController.get_turn_radius();
-        max_g_force = constrain_float(max_g_force, 0.1f, g.turn_max_g * GRAVITY_MSS);
+/*
+        float desiredTurn = g.pidSteering.get_pid(duck_leader_curr_loc, 1);
+        desiredTurn *= 3000;
+        if (ground_speed > .01)
+            desiredTurn = constrain_float(desiredTurn / ground_speed, -4500, 4500);
 
-        lateral_acceleration = duck_leader_curr_loc * 2.5;
-        //channel_steer->servo_out = duck_leader_curr_loc * 3000;
-        calc_nav_steer();
+        channel_steer->servo_out = desiredTurn;
+        */
+        float cam_fov = 53.5f;
+        float turningTime = 1.6f;
 
+        float desiredTrajectory = duck_leader_curr_loc * cam_fov / 2;
+        float trajectoryRate = desiredTrajectory / turningTime;
+
+	    channel_steer->servo_out = steerController.get_steering_out_rate(trajectoryRate);
         
         channel_throttle->servo_out = channel_throttle->control_in;
         set_reverse(channel_throttle->servo_out < 0);
+
+        duck_leader_last_loc = duck_leader_curr_loc;
 
         break;
     }

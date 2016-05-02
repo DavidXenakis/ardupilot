@@ -368,8 +368,8 @@ private:
     static const LogStructure log_structure[];
 
     // Last known location and current read location of duckling leader
-    float duck_leader_last_loc;
     float duck_leader_curr_loc;
+    float duck_leader_last_loc;
 
 private:
     // private member functions

@@ -298,6 +298,7 @@ public:
     // PID controllers
     //
     PID         pidSpeedThrottle;
+    PID         pidSteering;
 
     Parameters() :
         // RC channels
@@ -324,8 +325,10 @@ public:
 
         // PID controller    initial P        initial I        initial D        initial imax
         //-----------------------------------------------------------------------------------
-        pidSpeedThrottle    (0.7,             0.2,             0.2,             4000)
+        pidSpeedThrottle    (0.7,             0.2,             0.2,             4000),
+        pidSteering         (0.7,             0.2,             0.4,             1)
         {}
+        
 };
 
 extern const AP_Param::Info var_info[];

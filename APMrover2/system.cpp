@@ -164,6 +164,7 @@ void Rover::init_ardupilot()
 	}
 
 	rover.duck_leader_curr_loc = 0;
+	rover.duck_leader_last_loc = 0;
 
 	// initialise sonar
     init_sonar();
