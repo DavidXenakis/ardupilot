@@ -391,23 +391,20 @@ void Rover::update_current_mode(void)
         break;
 
     case DUCKLING: {
-        /* 
-         * TODO
-         * Read ball tracking information from mavlink
-         * Read information from surrounding cars over wifi
-         * update state of surrounding cars
-         * ? decide how to move
+        /*
+         * Receives a value from -1 to 1 from the Raspberry pi.
+         * This value is the location of the lead car.
+         * Calculates angle of trajectory, and uses the steerController
+         * to calculate a steering angle based on amount of time
+         * to make the turn.
          */
-/*
-        float desiredTurn = g.pidSteering.get_pid(duck_leader_curr_loc, 1);
-        desiredTurn *= 3000;
-        if (ground_speed > .01)
-            desiredTurn = constrain_float(desiredTurn / ground_speed, -4500, 4500);
-
-        channel_steer->servo_out = desiredTurn;
-        */
         float cam_fov = 53.5f;
-        float turningTime = 1.6f;
+
+        // Lower = faster turns, more overshoot.
+        // Higher = sluggish turns, little overshoot.
+        // This, in combination with the PID adjustments, 
+        // decides how the car decides to turn.
+        float turningTime = 1.7f;
 
         float desiredTrajectory = duck_leader_curr_loc * cam_fov / 2;
         float trajectoryRate = desiredTrajectory / turningTime;
